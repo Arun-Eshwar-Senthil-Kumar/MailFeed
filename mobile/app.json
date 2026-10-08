@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "MailFeed",
+    "slug": "mailfeed",
+    "scheme": "mailfeed",
+    "plugins": [
+      "expo-router",
+      ["expo-calendar", { "calendarPermission": "MailFeed adds important dates to your calendar." }],
+      ["expo-build-properties", { "android": { "usesCleartextTraffic": true } }]
+    ],
+    "android": {
+      "package": "com.yourname.mailfeed",
+      "permissions": ["READ_CALENDAR", "WRITE_CALENDAR"]
+    }
+  }
+}
