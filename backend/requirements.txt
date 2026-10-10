@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+dateparser
+httpx
+python-dotenv
