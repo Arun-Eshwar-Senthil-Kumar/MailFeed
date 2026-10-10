@@ -1,5 +1,5 @@
 from dotenv import load_dotenv; load_dotenv()
-import secrets, time
+import os, secrets, time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from fastapi import FastAPI, Request, Response, HTTPException, Depends
@@ -15,6 +15,12 @@ from .hooks import hook
 app = FastAPI(title="MailFeed")
 SESSIONS: dict[str, dict] = {}   # token -> {creds, cache, out, ts}  (in memory only; cleared on restart)
 POOL = ThreadPoolExecutor(8)
+ATTEMPTS: dict[str, list[float]] = {}   # ip -> recent login attempt times
+
+def _limit(ip: str):
+    now = time.time(); a = [t for t in ATTEMPTS.get(ip, []) if now - t < 600]
+    if len(a) >= 10: raise HTTPException(429, "Too many attempts. Try again in a few minutes.")
+    ATTEMPTS[ip] = a + [now]
 
 class Login(BaseModel):
     email: str
@@ -35,13 +41,16 @@ def sess(request: Request) -> dict:
     return s
 
 @app.post("/login")
-def login(b: Login, resp: Response):
+def login(b: Login, resp: Response, request: Request):
+    _limit(request.headers.get("x-forwarded-for", "").split(",")[0].strip() or request.client.host)
+    for k in [k for k, v in SESSIONS.items() if time.time() - v["born"] > 43200]: SESSIONS.pop(k, None)
     c = {"email": b.email.strip(), "password": b.password.replace(" ", ""), "host": mail.host_for(b.email, b.host)}
     try: mail.check(c)
     except Exception as e: raise HTTPException(401, _why(e))
     tok = secrets.token_urlsafe(32)
-    SESSIONS[tok] = {"creds": c, "cache": {}, "out": None, "ts": 0}
-    resp.set_cookie("sid", tok, httponly=True, samesite="lax", max_age=60 * 60 * 12)
+    SESSIONS[tok] = {"born": time.time(), "creds": c, "cache": {}, "out": None, "ts": 0}
+    resp.set_cookie("sid", tok, httponly=True, samesite="lax", max_age=60 * 60 * 12,
+                    secure=os.getenv("SECURE_COOKIES") == "1")
     return {"email": c["email"]}
 
 @app.post("/logout")
